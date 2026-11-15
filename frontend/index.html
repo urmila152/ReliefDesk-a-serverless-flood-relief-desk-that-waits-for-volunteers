@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ReliefDesk: request help</title><link rel="stylesheet" href="style.css"></head>
+<body><main>
+  <h1>Request help <span class="mute">/ मदद माँगें</span></h1>
+  <p class="mute">Write in English, Hindi or Marathi. Your request goes to the nearest free volunteer.</p>
+  <p class="note">Prototype with fictional data. In a real emergency call 112.</p>
+
+  <form id="f" novalidate>
+    <label for="text">What do you need? How many people?</label>
+    <textarea id="text" maxlength="1000" placeholder="Example: 4 people trapped on the first floor, one elderly woman, water is rising"></textarea>
+
+    <label for="area">Where are you?</label>
+    <div class="row">
+      <select id="area"></select>
+      <button type="button" class="alt" id="geo">Use my location</button>
+    </div>
+    <p class="mute" id="geoNote"></p>
+
+    <div class="row">
+      <div><label for="name">Your name (optional)</label><input id="name" maxlength="60" autocomplete="name"></div>
+      <div><label for="phone">Phone (shared only with the volunteer)</label><input id="phone" maxlength="20" inputmode="tel" autocomplete="tel"></div>
+    </div>
+    <p class="err" id="err" role="alert"></p>
+    <button type="submit" id="send">Send request</button>
+  </form>
+
+  <section id="status" class="status hide" aria-live="polite"><strong id="s1"></strong><p id="s2" class="mute"></p></section>
+</main>
+<script src="config.js"></script><script src="app.js"></script>
+<script>
+let loc = null, timer = null;
+const sel = $("area");
+AREAS.forEach(([n, la, ln], i) => sel.append(h("option", { value: i }, n + " (demo area)")));
+$("geo").onclick = () => {
+  if (!navigator.geolocation) { $("geoNote").textContent = "Location is not available here. Pick a demo area."; return; }
+  $("geoNote").textContent = "Finding your location...";
+  navigator.geolocation.getCurrentPosition(
+    p => { loc = { lat: p.coords.latitude, lng: p.coords.longitude }; $("geoNote").textContent = "Using your current location."; },
+    () => { loc = null; $("geoNote").textContent = "Could not get your location. Pick an area instead."; });
+};
+sel.onchange = () => { loc = null; $("geoNote").textContent = ""; };
+
+const MSG = {
+  open: ["We have your request.", "Finding the nearest volunteer. Keep this page open."],
+  assigned: ["A volunteer accepted and is on the way.", ""],
+  done: ["Marked as done by the volunteer.", "If you still need help, send a new request."],
+  escalated: ["No volunteer is free nearby right now.", "A coordinator has been alerted and will arrange help."],
+};
+async function poll(id) {
+  try {
+    const s = await api("/requests/" + id);
+    const st = s.status === "merged" ? (s.parent_status || "open") : s.status;
+    const [a, b] = MSG[st] || MSG.open;
+    $("s1").textContent = s.status === "assigned" || st === "assigned" ? (s.assigned_name ? s.assigned_name + " accepted and is on the way." : a) : a;
+    $("s2").textContent = (s.status === "merged" ? "Others near you reported the same need, so your request is joined with theirs. " : "")
+      + (s.need ? "We understood: " + (NEED[s.need] || s.need) + ". " : "") + b;
+    if (["done", "escalated"].includes(st)) return;
+  } catch (e) { $("s2").textContent = "Could not refresh. Retrying..."; }
+  timer = setTimeout(() => poll(id), 4000);
+}
+$("f").onsubmit = async (e) => {
+  e.preventDefault(); $("err").textContent = "";
+  const text = $("text").value.trim();
+  if (text.length < 3) { $("err").textContent = "Describe what you need."; $("text").focus(); return; }
+  const [, la, ln] = AREAS[sel.value];
+  const where = loc || { lat: la, lng: ln };
+  $("send").disabled = true;
+  try {
+    const r = await api("/requests", { method: "POST", body: { text, ...where, name: $("name").value, phone: $("phone").value } });
+    $("f").classList.add("hide"); $("status").classList.remove("hide");
+    $("s1").textContent = "Request sent."; clearTimeout(timer); poll(r.request_id);
+  } catch (err) { $("err").textContent = err.message; $("send").disabled = false; }
+};
+</script></body></html>

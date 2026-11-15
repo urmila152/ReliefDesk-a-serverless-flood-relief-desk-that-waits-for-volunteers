@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ReliefDesk: coordinator</title><link rel="stylesheet" href="style.css"></head>
+<body><main class="desk">
+  <h1>Coordinator desk</h1>
+  <form id="login" novalidate>
+    <label for="key">Coordinator key</label>
+    <div class="row"><input id="key" type="password" autocomplete="current-password"><button type="submit">Open desk</button></div>
+    <p class="err" id="lerr" role="alert"></p>
+  </form>
+
+  <div id="app" class="hide">
+    <div class="counts" id="counts" aria-live="polite"></div>
+    <div class="layout">
+      <section aria-label="Requests by priority"><div id="list"></div><p id="empty" class="mute hide">No requests yet. Submit one from the intake page.</p></section>
+      <aside class="panel" id="detail" aria-live="polite"><p class="mute">Select a request to see its details and its workflow run.</p></aside>
+    </div>
+  </div>
+</main>
+<script src="config.js"></script><script src="app.js"></script>
+<script>
+const STEP = { Extract: "Understand the request", Dedupe: "Check for duplicates", MergedIntoExisting: "Merged into an earlier request",
+  Score: "Score urgency", FindVolunteers: "Find nearest volunteers", HaveCandidate: "Anyone left to ask?",
+  OfferToVolunteer: "Offer sent, waiting for reply", NextCandidate: "Try the next volunteer", AwaitCompletion: "Volunteer on task, waiting for result",
+  WasCompleted: "Check outcome", Close: "Close request", Reopen: "Reopen, raise urgency", ReopenLimit: "Too many retries?", Escalate: "Escalate to coordinator" };
+let key = sessionStorage.getItem("rd-key") || "", sel = null, rows = [];
+
+function ago(ms) { const s = Math.max(0, (Date.now() - ms) / 1000 | 0); return s < 60 ? s + "s ago" : s < 3600 ? (s / 60 | 0) + " min ago" : (s / 3600 | 0) + " h ago"; }
+
+async function load() {
+  try {
+    const d = await api("/requests", { key });
+    rows = d.requests; $("login").classList.add("hide"); $("app").classList.remove("hide");
+    $("counts").replaceChildren(...["escalated", "open", "assigned", "done", "merged"].map(k => h("div", {}, h("b", {}, d.counts[k] || 0), k)));
+    $("empty").classList.toggle("hide", rows.length > 0);
+    $("list").replaceChildren(...rows.map(r => h("button", { class: "req", type: "button", "aria-current": r.request_id === sel, onclick: () => { sel = r.request_id; render(); showDetail(); } },
+      h("span", { class: "gauge", "aria-label": "Urgency " + (r.urgency || 0) }, h("i", { style: `height:${Math.min(100, r.urgency || 0)}%;opacity:.55` }), h("span", {}, r.urgency ?? "-")),
+      h("span", { class: "top" }, (NEED[r.need] || "Reading...") + " " + (r.people ? "· " + r.people + " people" : ""), h("span", { class: "pill " + r.status }, r.status)),
+      h("span", { class: "mute" }, r.summary || r.text))));
+    if (sel) showDetail();
+  } catch (e) {
+    if (e.status === 401) { sessionStorage.removeItem("rd-key"); $("app").classList.add("hide"); $("login").classList.remove("hide"); $("lerr").textContent = key ? "That key is not correct." : ""; }
+    else $("lerr").textContent = e.message;
+  }
+}
+function render() { document.querySelectorAll(".req").forEach((b, i) => b.setAttribute("aria-current", rows[i].request_id === sel)); }
+
+async function showDetail() {
+  const r = rows.find(x => x.request_id === sel); if (!r) return;
+  const box = h("div", {},
+    h("h2", { style: "margin-top:0" }, (NEED[r.need] || "Request") + " · urgency " + (r.urgency ?? "-")),
+    h("p", {}, r.text),
+    h("p", { class: "mute" }, [r.name && "From " + r.name, r.phone, ago(r.created_at), r.extraction && "read by " + r.extraction, r.merged_count && r.merged_count + " duplicate(s) merged", r.assigned_name && "Volunteer: " + r.assigned_name].filter(Boolean).join(" · ")),
+    r.lat ? h("p", {}, h("a", { href: `https://www.google.com/maps?q=${r.lat},${r.lng}`, target: "_blank", rel: "noopener" }, "Open location in maps")) : null,
+    h("h2", {}, "Workflow run"));
+  $("detail").replaceChildren(box);
+  if (r.status === "merged") { box.append(h("p", { class: "mute" }, "This request was merged into request " + r.parent_id + ".")); }
+  try {
+    const t = await api(`/requests/${r.request_id}/trace`, { key });
+    if (sel !== r.request_id) return;
+    const live = t.status === "RUNNING";
+    box.append(h("p", { class: "mute" }, "Execution: " + t.status.toLowerCase()),
+      h("ol", { class: "trace" }, t.steps.map((s, i) => h("li", { class: live && i === t.steps.length - 1 ? "now" : "" }, STEP[s.name] || s.name, h("small", {}, s.name)))));
+  } catch (e) { box.append(h("p", { class: "mute" }, "No workflow run to show.")); }
+}
+
+$("login").onsubmit = (e) => { e.preventDefault(); key = $("key").value; sessionStorage.setItem("rd-key", key); $("lerr").textContent = ""; load(); };
+if (key) load();
+setInterval(() => { if (key && !$("app").classList.contains("hide")) load(); }, 5000);
+</script></body></html>

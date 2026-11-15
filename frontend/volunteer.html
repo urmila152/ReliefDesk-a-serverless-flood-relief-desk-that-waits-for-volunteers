@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ReliefDesk: volunteer</title><link rel="stylesheet" href="style.css"></head>
+<body><main>
+  <h1 id="who">Volunteer</h1>
+  <p class="mute" id="state"></p>
+  <p class="err" id="err" role="alert"></p>
+  <div id="task"></div>
+  <div id="offers" aria-live="polite"></div>
+</main>
+<script src="config.js"></script><script src="app.js"></script>
+<script>
+const vid = new URLSearchParams(location.search).get("v") || "";
+let busy = false;
+async function act(fn) { if (busy) return; busy = true; $("err").textContent = ""; try { await fn(); } catch (e) { $("err").textContent = e.message; } busy = false; refresh(); }
+
+function renderTask(t) {
+  const maps = `https://www.google.com/maps?q=${t.lat},${t.lng}`;
+  return h("section", { class: "offer" },
+    h("h2", { style: "margin-top:0" }, "Your task: " + (NEED[t.need] || t.need) + ", " + t.people + " people"),
+    h("p", {}, t.text),
+    h("p", {}, [t.name, t.phone].filter(Boolean).join(" · ") || "No contact details given."),
+    h("p", {}, h("a", { href: maps, target: "_blank", rel: "noopener" }, "Open location in maps")),
+    h("div", { class: "row" },
+      h("button", { class: "go", onclick: () => act(() => api(`/requests/${t.request_id}/complete`, { method: "POST", body: { volunteer_id: vid, outcome: "done" } })) }, "Mark done"),
+      h("button", { class: "danger", onclick: () => act(() => api(`/requests/${t.request_id}/complete`, { method: "POST", body: { volunteer_id: vid, outcome: "unreachable" } })) }, "Could not reach them")));
+}
+function renderOffer(o) {
+  const left = Math.max(0, o.expires_at - Date.now() / 1000 | 0);
+  return h("section", { class: "offer" },
+    h("h2", { style: "margin-top:0" }, (NEED[o.need] || "Help") + ", " + o.people + " people, " + o.distance_km + " km away"),
+    h("p", {}, o.summary), h("p", { class: "mute" }, "Urgency " + o.urgency + " · expires in " + Math.ceil(left / 60) + " min"),
+    h("div", { class: "row" },
+      h("button", { class: "go", onclick: () => act(() => api(`/offers/${o.offer_id}/respond`, { method: "POST", body: { action: "accept" } })) }, "Accept"),
+      h("button", { class: "alt", onclick: () => act(() => api(`/offers/${o.offer_id}/respond`, { method: "POST", body: { action: "decline" } })) }, "Decline")));
+}
+async function refresh() {
+  if (busy) return;
+  try {
+    const p = await api("/volunteers/" + encodeURIComponent(vid));
+    $("who").textContent = p.name || "Volunteer";
+    $("task").replaceChildren(...(p.task ? [renderTask(p.task)] : []));
+    let offers = [];
+    if (!p.task) offers = (await api(`/volunteers/${encodeURIComponent(vid)}/offers`)).offers;
+    $("offers").replaceChildren(...offers.map(renderOffer));
+    $("state").textContent = p.task ? "You are on a task." : offers.length ? "New requests need you." : "No requests right now. Keep this page open; it refreshes by itself.";
+  } catch (e) { $("err").textContent = e.status === 404 ? "This volunteer link is not valid." : e.message; }
+}
+refresh(); setInterval(refresh, 4000);
+</script></body></html>

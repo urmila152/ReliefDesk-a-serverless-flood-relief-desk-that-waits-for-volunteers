@@ -1,0 +1,114 @@
+{
+  "Comment": "ReliefDesk request lifecycle: extract, dedupe, score, offer to volunteers (callback), await completion",
+  "StartAt": "Extract",
+  "States": {
+    "Extract": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {"FunctionName": "${ExtractFnArn}", "Payload.$": "$"},
+      "OutputPath": "$.Payload",
+      "Retry": [{"ErrorEquals": ["Lambda.ServiceException", "Lambda.TooManyRequestsException", "States.TaskFailed"], "IntervalSeconds": 2, "MaxAttempts": 3, "BackoffRate": 2}],
+      "Next": "Dedupe"
+    },
+    "Dedupe": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {"FunctionName": "${StepFnArn}", "Payload": {"action": "dedupe", "request_id.$": "$.request_id"}},
+      "OutputPath": "$.Payload",
+      "Retry": [{"ErrorEquals": ["Lambda.ServiceException", "Lambda.TooManyRequestsException"], "IntervalSeconds": 2, "MaxAttempts": 3, "BackoffRate": 2}],
+      "Next": "IsDuplicate"
+    },
+    "IsDuplicate": {
+      "Type": "Choice",
+      "Choices": [{"Variable": "$.duplicate", "BooleanEquals": true, "Next": "MergedIntoExisting"}],
+      "Default": "Score"
+    },
+    "MergedIntoExisting": {"Type": "Succeed"},
+    "Score": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {"FunctionName": "${StepFnArn}", "Payload": {"action": "score", "request_id.$": "$.request_id"}},
+      "OutputPath": "$.Payload",
+      "Retry": [{"ErrorEquals": ["Lambda.ServiceException", "Lambda.TooManyRequestsException"], "IntervalSeconds": 2, "MaxAttempts": 3, "BackoffRate": 2}],
+      "Next": "FindVolunteers"
+    },
+    "FindVolunteers": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {"FunctionName": "${StepFnArn}", "Payload": {"action": "find", "request_id.$": "$.request_id"}},
+      "OutputPath": "$.Payload",
+      "Retry": [{"ErrorEquals": ["Lambda.ServiceException", "Lambda.TooManyRequestsException"], "IntervalSeconds": 2, "MaxAttempts": 3, "BackoffRate": 2}],
+      "Next": "HaveCandidate"
+    },
+    "HaveCandidate": {
+      "Type": "Choice",
+      "Choices": [{"Variable": "$.idx", "NumericLessThanPath": "$.count", "Next": "OfferToVolunteer"}],
+      "Default": "Escalate"
+    },
+    "OfferToVolunteer": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
+      "Parameters": {
+        "FunctionName": "${StepFnArn}",
+        "Payload": {"action": "offer", "request_id.$": "$.request_id", "candidates.$": "$.candidates", "idx.$": "$.idx", "token.$": "$$.Task.Token"}
+      },
+      "TimeoutSeconds": ${OfferTimeout},
+      "ResultPath": "$.offer",
+      "Catch": [{"ErrorEquals": ["Declined", "States.Timeout"], "ResultPath": "$.error", "Next": "NextCandidate"}],
+      "Next": "AwaitCompletion"
+    },
+    "NextCandidate": {
+      "Type": "Pass",
+      "Parameters": {
+        "request_id.$": "$.request_id",
+        "candidates.$": "$.candidates",
+        "count.$": "$.count",
+        "idx.$": "States.MathAdd($.idx, 1)"
+      },
+      "Next": "HaveCandidate"
+    },
+    "AwaitCompletion": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
+      "Parameters": {
+        "FunctionName": "${StepFnArn}",
+        "Payload": {"action": "await", "request_id.$": "$.request_id", "token.$": "$$.Task.Token"}
+      },
+      "TimeoutSeconds": ${CompletionTimeout},
+      "ResultPath": "$.completion",
+      "Catch": [{"ErrorEquals": ["States.Timeout"], "ResultPath": "$.error", "Next": "Reopen"}],
+      "Next": "WasCompleted"
+    },
+    "WasCompleted": {
+      "Type": "Choice",
+      "Choices": [{"Variable": "$.completion.outcome", "StringEquals": "done", "Next": "Close"}],
+      "Default": "Reopen"
+    },
+    "Close": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {"FunctionName": "${StepFnArn}", "Payload": {"action": "close", "request_id.$": "$.request_id"}},
+      "OutputPath": "$.Payload",
+      "End": true
+    },
+    "Reopen": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {"FunctionName": "${StepFnArn}", "Payload": {"action": "reopen", "request_id.$": "$.request_id"}},
+      "OutputPath": "$.Payload",
+      "Next": "ReopenLimit"
+    },
+    "ReopenLimit": {
+      "Type": "Choice",
+      "Choices": [{"Variable": "$.reopen_count", "NumericGreaterThanEquals": 3, "Next": "Escalate"}],
+      "Default": "FindVolunteers"
+    },
+    "Escalate": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {"FunctionName": "${StepFnArn}", "Payload": {"action": "escalate", "request_id.$": "$.request_id"}},
+      "OutputPath": "$.Payload",
+      "End": true
+    }
+  }
+}

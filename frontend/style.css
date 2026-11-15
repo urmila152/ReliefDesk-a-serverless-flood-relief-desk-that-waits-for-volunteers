@@ -1,0 +1,48 @@
+:root{--bg:#edf2f4;--ink:#112733;--mute:#4d6672;--line:#c6d5db;--paper:#fbfdfe;--signal:#e8590c;--ok:#0b7a75;--warn:#8a5a00;--focus:#0b5cad}
+*{box-sizing:border-box}
+html{font-size:16px}
+body{margin:0;background:var(--bg);color:var(--ink);font:1rem/1.55 "Segoe UI","Noto Sans","Noto Sans Devanagari",system-ui,sans-serif}
+main{max-width:46rem;margin:0 auto;padding:1.25rem 1rem 4rem}
+h1{font-size:1.7rem;line-height:1.2;margin:.2rem 0 .25rem;letter-spacing:-.01em}
+h2{font-size:1.1rem;margin:1.6rem 0 .5rem}
+p{margin:.3rem 0}.mute{color:var(--mute)}
+label{display:block;font-weight:600;margin:1.1rem 0 .3rem}
+textarea,input,select{width:100%;font:inherit;color:inherit;background:var(--paper);border:1.5px solid var(--line);border-radius:6px;padding:.7rem .8rem;min-height:2.75rem}
+textarea{min-height:8rem;resize:vertical}
+:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+button{font:inherit;font-weight:600;min-height:2.75rem;padding:.55rem 1.1rem;border-radius:6px;border:1.5px solid var(--ink);background:var(--ink);color:#fff;cursor:pointer}
+button.alt{background:transparent;color:var(--ink)}
+button.go{background:var(--ok);border-color:var(--ok)}
+button.danger{background:transparent;color:#9b2c06;border-color:#9b2c06}
+button:disabled{opacity:.55;cursor:wait}
+.row{display:flex;gap:.6rem;flex-wrap:wrap;align-items:center}
+.row>*{flex:1 1 12rem}.row>button{flex:0 0 auto}
+.note{border-left:4px solid var(--signal);padding:.5rem .8rem;background:var(--paper);margin:1rem 0}
+.err{color:#9b2c06;font-weight:600;min-height:1.4rem}
+.status{border:1.5px solid var(--ink);background:var(--paper);padding:1rem;border-radius:6px;margin-top:1.2rem}
+.status strong{display:block;font-size:1.15rem}
+/* coordinator desk */
+.desk{max-width:78rem}
+.layout{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:1.5rem;align-items:start}
+@media(max-width:60rem){.layout{grid-template-columns:1fr}}
+.counts{display:flex;gap:1.2rem;flex-wrap:wrap;margin:.6rem 0 1rem}
+.counts b{font-size:1.5rem;display:block;line-height:1}
+.req{display:grid;grid-template-columns:3.2rem 1fr;gap:.2rem .8rem;width:100%;text-align:left;background:var(--paper);color:var(--ink);border:0;border-bottom:1px solid var(--line);border-radius:0;padding:.7rem .6rem;min-height:4rem;font-weight:400}
+.req[aria-current=true]{outline:3px solid var(--ink);outline-offset:-3px}
+.gauge{grid-row:span 2;position:relative;width:2.2rem;height:3.2rem;border:1.5px solid var(--ink);border-radius:4px;overflow:hidden;align-self:center;background:#fff}
+.gauge i{position:absolute;left:0;right:0;bottom:0;background:var(--signal)}
+.gauge span{position:absolute;inset:0;display:grid;place-items:center;font-weight:700;font-size:.9rem;mix-blend-mode:normal;text-shadow:0 0 3px #fff,0 0 3px #fff}
+.req .top{font-weight:600}
+.pill{display:inline-block;padding:0 .5rem;border-radius:99px;font-size:.82rem;font-weight:600;border:1.5px solid currentColor;margin-left:.4rem}
+.pill.escalated{color:#9b2c06}.pill.assigned{color:var(--ok)}.pill.open{color:var(--warn)}.pill.done,.pill.merged{color:var(--mute)}
+.panel{background:var(--paper);border:1.5px solid var(--ink);border-radius:6px;padding:1rem;position:sticky;top:1rem}
+.trace{display:flex;flex-direction:column;gap:0;margin:.6rem 0 0;padding:0;list-style:none;border-left:3px solid var(--line);margin-left:.4rem}
+.trace li{padding:.25rem 0 .25rem .9rem;position:relative}
+.trace li::before{content:"";position:absolute;left:-.5rem;top:.7rem;width:.7rem;height:.7rem;border-radius:50%;background:var(--ink)}
+.trace li.now::before{background:var(--signal);animation:pulse 1.4s ease-in-out infinite}
+.trace small{display:block;color:var(--mute);font-family:ui-monospace,Consolas,monospace;font-size:.78rem}
+@keyframes pulse{50%{box-shadow:0 0 0 .45rem rgba(232,89,12,.25)}}
+@media(prefers-reduced-motion:reduce){.trace li.now::before{animation:none}}
+.offer{background:var(--paper);border:1.5px solid var(--ink);border-radius:6px;padding:1rem;margin:.8rem 0}
+.offer .row{margin-top:.8rem}
+.hide{display:none}
